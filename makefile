@@ -10,9 +10,8 @@ GLOBAL_PATH = ../../lib/e-puck2_main-processor
 
 #Source files to include
 CSRC += ./main.c \
-		./audio_processing.c \
-		./communications.c \
-		./fft.c \
+		./pi_regulator.c \
+		./process_image.c \
 
 #Header folders to include
 INCDIR += 
