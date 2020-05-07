@@ -2,11 +2,10 @@
 #include "hal.h"
 #include <chprintf.h>
 #include <usbcfg.h>
-
 #include <main.h>
 #include <camera/po8030.h>
-
 #include <process_image.h>
+#include <selector.h>
 
 
 static float distance_cm = 0;
@@ -39,37 +38,37 @@ uint16_t extract_line_width(uint8_t *buffer){
 		while(stop == 0 && i < (IMAGE_BUFFER_SIZE - WIDTH_SLOPE))
 		{ 
 			//the slope must at least be WIDTH_SLOPE wide and is compared
-		    //to the mean of the image
-		    if(buffer[i] > mean && buffer[i+WIDTH_SLOPE] < mean)
-		    {
-		        begin = i;
-		        stop = 1;
-		    }
-		    i++;
+			//to the mean of the image
+			if(buffer[i] > mean && buffer[i+WIDTH_SLOPE] < mean)
+			{
+				begin = i;
+				stop = 1;
+			}
+			i++;
 		}
 		//if a begin was found, search for an end
 		if (i < (IMAGE_BUFFER_SIZE - WIDTH_SLOPE) && begin)
 		{
-		    stop = 0;
-		    
-		    while(stop == 0 && i < IMAGE_BUFFER_SIZE)
-		    {
-		        if(buffer[i] > mean && buffer[i-WIDTH_SLOPE] < mean)
-		        {
-		            end = i;
-		            stop = 1;
-		        }
-		        i++;
-		    }
-		    //if an end was not found
-		    if (i > IMAGE_BUFFER_SIZE || !end)
-		    {
-		        line_not_found = 1;
-		    }
+			stop = 0;
+
+			while(stop == 0 && i < IMAGE_BUFFER_SIZE)
+			{
+				if(buffer[i] > mean && buffer[i-WIDTH_SLOPE] < mean)
+				{
+					end = i;
+					stop = 1;
+				}
+				i++;
+			}
+			//if an end was not found
+			if (i > IMAGE_BUFFER_SIZE || !end)
+			{
+				line_not_found = 1;
+			}
 		}
 		else//if no begin was found
 		{
-		    line_not_found = 1;
+			line_not_found = 1;
 		}
 
 		//if a line too small has been detected, continues the search
@@ -102,8 +101,8 @@ uint16_t extract_line_width(uint8_t *buffer){
 static THD_WORKING_AREA(waCaptureImage, 256);
 static THD_FUNCTION(CaptureImage, arg) {
 
-    chRegSetThreadName(__FUNCTION__);
-    (void)arg;
+	chRegSetThreadName(__FUNCTION__);
+	(void)arg;
 
 	//Takes pixels 0 to IMAGE_BUFFER_SIZE of the line 10 + 11 (minimum 2 lines because reasons)
 	po8030_advanced_config(FORMAT_RGB565, 0, 470, IMAGE_BUFFER_SIZE, 2, SUBSAMPLING_X1, SUBSAMPLING_X1);
@@ -111,42 +110,67 @@ static THD_FUNCTION(CaptureImage, arg) {
 	dcmi_set_capture_mode(CAPTURE_ONE_SHOT);
 	dcmi_prepare();
 
-    while(1){
-        //starts a capture
+	while(1){
+		//starts a capture
 		dcmi_capture_start();
 		//waits for the capture to be done
 		wait_image_ready();
 		//signals an image has been captured
 		chBSemSignal(&image_ready_sem);
-    }
+	}
 }
 
 
 static THD_WORKING_AREA(waProcessImage, 1024);
 static THD_FUNCTION(ProcessImage, arg) {
 
-    chRegSetThreadName(__FUNCTION__);
-    (void)arg;
+	chRegSetThreadName(__FUNCTION__);
+	(void)arg;
 
 	uint8_t *img_buff_ptr;
 	uint8_t image[IMAGE_BUFFER_SIZE] = {0};
+	uint16_t image_16b[IMAGE_BUFFER_SIZE] = {0};
 	uint16_t lineWidth = 0;
-
+	uint16_t mask = 0x0000;
+	uint8_t shift = 0;
 	bool send_to_computer = true;
 
-    while(1){
-    	//waits until an image has been captured
-        chBSemWait(&image_ready_sem);
+
+
+	while(1){
+
+		switch(get_selector()){
+		case 1:
+			mask = MASK_R;
+			shift = SHIFT_R;
+			break;
+		case 2:
+			mask = MASK_B;
+			shift = 0;
+			break;
+		default:
+			mask = MASK_R;
+			shift = SHIFT_R;
+		}
+		/*if(get_selector() == 0 || get_selector() == 2 ){
+			mask = MASK_R;
+			shift = SHIFT_R;
+		}else{
+			mask = MASK_G;
+			shift = SHIFT_G;
+		}*/
+		//waits until an image has been captured
+		chBSemWait(&image_ready_sem);
 		//gets the pointer to the array filled with the last image in RGB565    
 		img_buff_ptr = dcmi_get_last_image_ptr();
 
 		//Extracts only the red pixels
-		for(uint16_t i = 0 ; i < (2 * IMAGE_BUFFER_SIZE) ; i+=2){
+		for(uint16_t i = 0 ; i < (2*IMAGE_BUFFER_SIZE) ; i+=2){
 			//extracts first 5bits of the first byte
 			//takes nothing from the second byte
-			image[i/2] = (uint8_t)img_buff_ptr[i]&0xF8;
+			image_16b[i/2] = (img_buff_ptr[i] << 8) | (img_buff_ptr[i+1]&0x00FF);
+			image[i/2] = (uint8_t)((image_16b[i/2]&mask) >> shift);
 		}
-
 		//search for a line in the image and gets its width in pixels
 		lineWidth = extract_line_width(image);
 
@@ -161,7 +185,7 @@ static THD_FUNCTION(ProcessImage, arg) {
 		}
 		//invert the bool
 		send_to_computer = !send_to_computer;
-    }
+	}
 }
 
 float get_distance_cm(void){
