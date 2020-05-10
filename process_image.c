@@ -18,11 +18,9 @@ static BSEMAPHORE_DECL(image_ready_sem, TRUE); // @suppress("Field cannot be res
  */
 uint16_t extract_line_position(uint8_t *buffer){
 
-	uint16_t i = 0, begin = 0, end = 0, width = 0;
+	uint16_t i = 0, begin = 0, end = 0;
 	uint8_t stop = 0, wrong_line = 0, line_not_found = 0;
 	uint32_t mean = 0;
-
-	static uint16_t last_width = PXTOCM/GOAL_DISTANCE;
 
 	//performs an average
 	for(uint16_t i = 0 ; i < IMAGE_BUFFER_SIZE ; i++){
@@ -82,14 +80,12 @@ uint16_t extract_line_position(uint8_t *buffer){
 	if(line_not_found){
 		begin = 0;
 		end = 0;
-		width = last_width;
 	}else{
-		last_width = width = (end - begin);
 		line_position = (begin + end)/2; //gives the line position.
 	}
 
-		return line_position;
-	}
+	return line_position;
+}
 
 static THD_WORKING_AREA(waCaptureImage, 256);
 static THD_FUNCTION(CaptureImage, arg) {
@@ -127,8 +123,7 @@ static THD_FUNCTION(ProcessImage, arg) {
 	uint8_t shift = 0;
 	bool send_to_computer = true;
 
-
-
+	//selection of color to extract
 	while(1){
 
 		switch(get_selector()){
@@ -154,11 +149,11 @@ static THD_FUNCTION(ProcessImage, arg) {
 		//gets the pointer to the array filled with the last image in RGB565    
 		img_buff_ptr = dcmi_get_last_image_ptr();
 
-		//Extracts only the red pixels
+		//Extracts one color from the image
 		for(uint16_t i = 0 ; i < (2*IMAGE_BUFFER_SIZE) ; i+=2){
-			//extracts first 5bits of the first byte
-			//takes nothing from the second byte
+			//concatenation of the two bytes from 3 color pixels
 			image_16b[i/2] = (img_buff_ptr[i] << 8) | (img_buff_ptr[i+1]&0x00FF);
+			//extract one color and shift the bytes to the lowest value, then convert into uint8
 			image[i/2] = (uint8_t)((image_16b[i/2]&mask) >> shift);
 		}
 		//search for a line in the image and gets its position

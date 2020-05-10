@@ -11,6 +11,7 @@
 #include <motors.h>
 #include <camera/po8030.h>
 #include <chprintf.h>
+#include <sensors/VL53L0X/VL53L0X.h>
 
 #include <pi_regulator.h>
 #include <process_image.h>
@@ -50,6 +51,9 @@ int main(void)
 	po8030_start();
 	//inits the motors
 	motors_init();
+
+	//starts TOF sensor
+	VL53L0X_start();
 
 	//stars the threads for the pi regulator and the processing of the image
 	pi_regulator_start();
