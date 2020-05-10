@@ -7,8 +7,6 @@
 #include <process_image.h>
 #include <selector.h>
 
-
-static float distance_cm = 0;
 static uint16_t line_position = IMAGE_BUFFER_SIZE/2;	//middle
 
 //semaphore
@@ -18,7 +16,7 @@ static BSEMAPHORE_DECL(image_ready_sem, TRUE); // @suppress("Field cannot be res
  *  Returns the line's width extracted from the image buffer given
  *  Returns 0 if line not found
  */
-uint16_t extract_line_width(uint8_t *buffer){
+uint16_t extract_line_position(uint8_t *buffer){
 
 	uint16_t i = 0, begin = 0, end = 0, width = 0;
 	uint8_t stop = 0, wrong_line = 0, line_not_found = 0;
@@ -90,13 +88,8 @@ uint16_t extract_line_width(uint8_t *buffer){
 		line_position = (begin + end)/2; //gives the line position.
 	}
 
-	//sets a maximum width or returns the measured width
-	if((PXTOCM/width) > MAX_DISTANCE){
-		return PXTOCM/MAX_DISTANCE;
-	}else{
-		return width;
+		return line_position;
 	}
-}
 
 static THD_WORKING_AREA(waCaptureImage, 256);
 static THD_FUNCTION(CaptureImage, arg) {
@@ -130,7 +123,6 @@ static THD_FUNCTION(ProcessImage, arg) {
 	uint8_t *img_buff_ptr;
 	uint8_t image[IMAGE_BUFFER_SIZE] = {0};
 	uint16_t image_16b[IMAGE_BUFFER_SIZE] = {0};
-	uint16_t lineWidth = 0;
 	uint16_t mask = 0x0000;
 	uint8_t shift = 0;
 	bool send_to_computer = true;
@@ -148,17 +140,15 @@ static THD_FUNCTION(ProcessImage, arg) {
 			mask = MASK_B;
 			shift = 0;
 			break;
+		case 3:
+			mask = MASK_G;
+			shift = SHIFT_G;
+			break;
 		default:
 			mask = MASK_R;
 			shift = SHIFT_R;
 		}
-		/*if(get_selector() == 0 || get_selector() == 2 ){
-			mask = MASK_R;
-			shift = SHIFT_R;
-		}else{
-			mask = MASK_G;
-			shift = SHIFT_G;
-		}*/
+
 		//waits until an image has been captured
 		chBSemWait(&image_ready_sem);
 		//gets the pointer to the array filled with the last image in RGB565    
@@ -171,13 +161,8 @@ static THD_FUNCTION(ProcessImage, arg) {
 			image_16b[i/2] = (img_buff_ptr[i] << 8) | (img_buff_ptr[i+1]&0x00FF);
 			image[i/2] = (uint8_t)((image_16b[i/2]&mask) >> shift);
 		}
-		//search for a line in the image and gets its width in pixels
-		lineWidth = extract_line_width(image);
-
-		//converts the width into a distance between the robot and the camera
-		if(lineWidth){
-			distance_cm = PXTOCM/lineWidth;
-		}
+		//search for a line in the image and gets its position
+		line_position = extract_line_position(image);
 
 		if(send_to_computer){
 			//sends to the computer the image
@@ -188,9 +173,6 @@ static THD_FUNCTION(ProcessImage, arg) {
 	}
 }
 
-float get_distance_cm(void){
-	return distance_cm;
-}
 
 uint16_t get_line_position(void){
 	return line_position;

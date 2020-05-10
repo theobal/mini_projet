@@ -49,8 +49,7 @@ static THD_FUNCTION(PiRegulator, arg) {
 	(void)arg;
 
 	systime_t time;
-
-	volatile int16_t speed = 0;
+	int16_t speed = 0;
 	int16_t speed_correction = 0;
 
 	while(1){
